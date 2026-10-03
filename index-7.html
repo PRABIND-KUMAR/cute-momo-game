@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Momo Run — Jump & Eat</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f2e5d8}
+  body{touch-action:none}
+  #wrap{position:relative;width:100%;height:100%;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+  #ui{position:absolute;inset:0;pointer-events:none}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 16px}
+  .pill{background:rgba(255,255,255,.82);backdrop-filter:blur(8px);padding:8px 12px;border-radius:999px;font-weight:800;color:#553d35;box-shadow:0 4px 15px #0001}
+  #message{position:absolute;left:50%;top:18%;transform:translateX(-50%);background:#fff8;border:2px solid #fff;padding:14px 20px;border-radius:18px;text-align:center;font-weight:800;color:#5b3a30;display:none;max-width:88%}
+  #controls{position:absolute;left:0;right:0;bottom:18px;display:flex;justify-content:space-between;padding:0 22px;pointer-events:auto}
+  button{border:0;border-radius:50%;width:72px;height:72px;font-size:28px;font-weight:900;background:#fff;box-shadow:0 8px 24px #0002;color:#5b3a30}
+  .joystick{width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.52);border:3px solid rgba(255,255,255,.9);box-shadow:0 8px 25px #0002;position:relative;touch-action:none}
+  .stick{position:absolute;left:27px;top:27px;width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#ffd5e8;color:#b75c83;font-size:27px;box-shadow:0 5px 15px #0002;touch-action:none}
+  .jumpBtn{width:82px;height:82px;background:#ffd8ea;color:#b75c83;font-size:34px;border:3px solid #fff}
+  .jumpBtn:active,.stick:active{transform:scale(.94)}
+  #jump{background:#ffd9ec}
+  #start{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#0003,#0005);pointer-events:auto}
+  .card{width:min(420px,90%);background:#fff;border-radius:28px;padding:26px;text-align:center;box-shadow:0 20px 60px #0005}
+  .card h1{margin:0 0 8px;font-size:30px}.card p{color:#654c44;line-height:1.45}
+  .mainbtn{border-radius:16px;width:auto;height:auto;padding:13px 22px;background:#ff8fbe;color:white;font-size:17px;cursor:pointer}
+  #end{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#0006;pointer-events:auto}
+  .small{font-size:12px;color:#8a6e63}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="game"></canvas>
+<div id="ui">
+  <div class="top">
+    <div class="pill">🥟 Momos: <span id="score">0</span>/15</div>
+    <div class="pill">💗 Cute: <span id="size">♡</span></div>
+  </div>
+  <div id="message"></div>
+  <div id="controls">
+  <div id="joystick" class="joystick" aria-label="joystick">
+    <div id="stick" class="stick">✿</div>
+  </div>
+  <button id="jump" class="jumpBtn" aria-label="jump">↑</button>
+</div>
+</div>
+
+<div id="start">
+ <div class="card">
+   <h1>🥟 Momo Run</h1>
+   <p>Photo wale character ko run karao, jump karao aur hawa me rakhe momos collect karo. Har momo ke baad character ka size thoda badhega.</p>
+   <p><b>Challenge:</b> kuch momos moving honge, kuch high/low lanes me, aur beech-beech me obstacles aayenge.</p>
+   <button class="mainbtn" id="startBtn">Game Start ▶</button>
+   <p class="small">Controls: ← → move • Space / ⬆ jump • Mobile buttons bhi hain</p>
+ </div>
+</div>
+
+<div id="end">
+ <div class="card">
+   <h1>🎉 Sab momos kha liye!</h1>
+   <p id="finalText"></p>
+   <p><b>Game to khel liya — ab real me bhi kuch kha lo ✨<br>aur agar tumhari dawa ka time hai, to dawa bhi kha lo.</b></p>
+   <button class="mainbtn" id="again">Phir se khelo ↻</button>
+ </div>
+</div>
+</div>
+
+<script>
+const img = new Image();
+img.src = "character.jpg";
+
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+const scoreEl=document.getElementById('score'),sizeEl=document.getElementById('size');
+const msg=document.getElementById('message');
+let W,H,dpr,ground;
+let running=false,last=0,score=0,size=1, speed=330, time=0;
+let cuteLevel=0, particles=[];
+let player={x:0,y:0,w:100,h:180,vy:0,onGround:true};
+let foods=[],obs=[],spawnFood=0,spawnObs=1.2,shake=0;
+const keys={left:false,right:false};
+
+function resize(){
+ dpr=Math.min(devicePixelRatio||1,2); W=innerWidth;H=innerHeight;
+ c.width=W*dpr;c.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+ ground=H-120;
+ player.x=W*.5; player.y=ground-player.h;
+}
+addEventListener('resize',resize); resize();
+
+function reset(){
+ score=0;size=1;speed=330;time=0;cuteLevel=0;particles=[];foods=[];obs=[];spawnFood=.4;spawnObs=1.3;
+ player.w=Math.min(110,W*.20);player.h=player.w*1.78;player.x=W*.5;player.y=ground-player.h;player.vy=0;
+ scoreEl.textContent=score;sizeEl.textContent='♡'.repeat(Math.min(cuteLevel,5)) || '♡';
+ msg.style.display='none';
+}
+
+function jump(){
+ if(!running)return;
+ if(player.onGround){player.vy=-720;player.onGround=false;shake=5}
+}
+function move(dir){if(running){player.x+=dir*34;player.x=Math.max(45,Math.min(W-45,player.x));}}
+
+addEventListener('keydown',e=>{
+ if(e.code==='ArrowLeft'||e.code==='KeyA')keys.left=true;
+ if(e.code==='ArrowRight'||e.code==='KeyD')keys.right=true;
+ if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'){e.preventDefault();jump()}
+});
+addEventListener('keyup',e=>{
+ if(e.code==='ArrowLeft'||e.code==='KeyA')keys.left=false;
+ if(e.code==='ArrowRight'||e.code==='KeyD')keys.right=false;
+});
+document.getElementById('jump').onclick=jump;
+
+const joystick=document.getElementById('joystick');
+const stick=document.getElementById('stick');
+let joyActive=false, joyX=0;
+function joyMove(e){
+  if(!joyActive)return;
+  const r=joystick.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+  let dx=e.clientX-cx, dy=e.clientY-cy, max=35;
+  dx=Math.max(-max,Math.min(max,dx)); dy=Math.max(-max,Math.min(max,dy));
+  stick.style.transform=`translate(${dx}px,${dy}px)`;
+  joyX=dx/max;
+}
+joystick.addEventListener('pointerdown',e=>{joyActive=true;joystick.setPointerCapture(e.pointerId);joyMove(e)});
+joystick.addEventListener('pointermove',joyMove);
+joystick.addEventListener('pointerup',()=>{joyActive=false;joyX=0;stick.style.transform='translate(0,0)'});
+joystick.addEventListener('pointercancel',()=>{joyActive=false;joyX=0;stick.style.transform='translate(0,0)'});
+
+
+function addFood(){
+ const high=Math.random()<.38;
+ foods.push({x:W+50,y: high?ground-210-Math.random()*90:ground-80-Math.random()*50,r:22+Math.random()*4,rot:0,vx:speed*(.85+Math.random()*.25),bob:Math.random()*6});
+}
+function addObs(){
+ obs.push({x:W+60,y:ground-46,w:38+Math.random()*25,h:46+Math.random()*32,vx:speed*1.08});
+}
+function collide(a,b){
+ return a.x-a.w*.30<b.x+b.w*.5 && a.x+a.w*.30>b.x-b.w*.5 &&
+        a.y-a.h*.18<b.y+b.h*.5 && a.y+a.h*.45>b.y-b.h*.5;
+}
+function eat(i){
+ foods.splice(i,1);score++;cuteLevel=Math.min(5,Math.floor(score/3)+1);
+ speed=Math.min(520,speed+5);
+ size=1;
+ scoreEl.textContent=score;
+ sizeEl.textContent='♡'.repeat(cuteLevel);
+ for(let k=0;k<8;k++) particles.push({x:player.x+(Math.random()-.5)*55,y:player.y+50+(Math.random()-.5)*70,
+   vx:(Math.random()-.5)*80,vy:-70-Math.random()*100,life:1,kind:Math.random()<.5?'♥':'✦'});
+ msg.textContent=score<5?"🥟 Yayy! Ek aur momo ✨":score<10?"🌸 Kitni cute! Aur momo ✨":score<15?"🌷 Almost there, little star ✨":"";
+ if(msg.textContent){msg.style.display='block';clearTimeout(msg.t);msg.t=setTimeout(()=>msg.style.display='none',950)}
+ if(score>=15) finish();
+}
+function finish(){
+ running=false;document.getElementById('finalText').textContent=`Tumne ${score} momos collect kar liye. Ab character ke paas cute sparkle level ${cuteLevel}/5 hai!`;
+ document.getElementById('end').style.display='flex';
+}
+function start(){
+ document.getElementById('start').style.display='none';document.getElementById('end').style.display='none';
+ reset();running=true;last=performance.now();requestAnimationFrame(loop);
+}
+document.getElementById('startBtn').onclick=start;
+document.getElementById('again').onclick=start;
+
+function drawBg(){
+ ctx.fillStyle='#eadbce';ctx.fillRect(0,0,W,H);
+ // subtle wall
+ for(let i=0;i<8;i++){ctx.fillStyle='rgba(255,255,255,.16)';ctx.beginPath();ctx.arc((i*180+time*10)%W,80+(i%3)*90,55,0,Math.PI*2);ctx.fill()}
+ ctx.fillStyle='#c9b09f';ctx.fillRect(0,ground,W,H-ground);
+ ctx.fillStyle='#a98e7d';ctx.fillRect(0,ground,W,5);
+ for(let x=(-time*speed*.35)%60;x<W;x+=60){ctx.fillStyle='rgba(255,255,255,.25)';ctx.fillRect(x,ground+35,30,4)}
+}
+
+function drawMomo(f){
+ ctx.save();ctx.translate(f.x,f.y+Math.sin(time*5+f.bob)*5);ctx.rotate(Math.sin(f.rot)*.12);
+ ctx.fillStyle='#fff3ea';ctx.beginPath();ctx.ellipse(0,7,f.r*1.12,f.r*.72,0,0,Math.PI*2);ctx.fill();
+ ctx.strokeStyle='#d9a98c';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,1,f.r*.75,Math.PI*1.08,Math.PI*1.92);ctx.stroke();
+ ctx.fillStyle='#7b4b3c';ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.fillText('MOMO',0,5);
+ ctx.restore();
+}
+function drawObstacle(o){
+ ctx.save();ctx.translate(o.x,o.y+o.h/2);ctx.fillStyle='#6f625d';ctx.fillRect(-o.w/2,-o.h/2,o.w,o.h);
+ ctx.fillStyle='#f4d5c5';ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.fillText('!',0,5);ctx.restore();
+}
+function drawPlayer(){
+ const bob=Math.sin(time*11)*(player.onGround?3:0);
+ const tilt=Math.sin(time*13)*(player.onGround?.035:0);
+ ctx.save();
+ ctx.translate(player.x,player.y+bob);
+ ctx.rotate(tilt);
+ // soft shadow
+ ctx.globalAlpha=.16;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(0,player.h+3,player.w*.40,9,0,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+ ctx.drawImage(img,-player.w/2,0,player.w,player.h);
+
+ // cute progression: sparkles, tiny heart, flower accents — no body-size change
+ const accents=Math.min(cuteLevel,5);
+ ctx.textAlign='center';
+ ctx.font='bold 18px sans-serif';
+ if(accents>=1) ctx.fillText('✦',-player.w*.48,player.h*.22);
+ if(accents>=2) ctx.fillText('♥',player.w*.46,player.h*.28);
+ if(accents>=3) ctx.fillText('✿',-player.w*.46,player.h*.43);
+ if(accents>=4) ctx.fillText('✧',player.w*.48,player.h*.55);
+ if(accents>=5) {
+   ctx.font='bold 22px sans-serif';
+   ctx.fillText('♡',player.w*.42,player.h*.10);
+ }
+ ctx.restore();
+}
+
+function update(dt){
+ time+=dt;
+ if(joyActive && Math.abs(joyX)>.08) move(joyX*.95);
+ if(keys.left)move(-1.4);if(keys.right)move(1.4);
+ player.vy+=1800*dt;player.y+=player.vy*dt;
+ if(player.y>=ground-player.h){player.y=ground-player.h;player.vy=0;player.onGround=true}
+ spawnFood-=dt;if(spawnFood<=0){addFood();spawnFood=.65+Math.random()*.65}
+ spawnObs-=dt;if(spawnObs<=0){addObs();spawnObs=1.7+Math.random()*1.7}
+ for(let i=foods.length-1;i>=0;i--){
+   foods[i].x-=foods[i].vx*dt;foods[i].rot+=dt*4;
+   if(collide(player,{x:foods[i].x,y:foods[i].y,w:foods[i].r*1.6,h:foods[i].r*1.6}))eat(i);
+   else if(foods[i].x<-80)foods.splice(i,1);
+ }
+ for(let i=obs.length-1;i>=0;i--){
+   obs[i].x-=obs[i].vx*dt;
+   if(collide(player,{x:obs[i].x,y:obs[i].y,w:obs[i].w,h:obs[i].h})){
+      player.vy=-520;player.x-=55;shake=12;obs.splice(i,1);
+      msg.textContent='🌸 Oops! Jump karke obstacle se bacho!';
+      msg.style.display='block';clearTimeout(msg.t);msg.t=setTimeout(()=>msg.style.display='none',1300);
+   } else if(obs[i].x<-100)obs.splice(i,1);
+ }
+}
+
+function draw(){
+ drawBg();
+ foods.forEach(drawMomo);obs.forEach(drawObstacle);
+ particles.forEach(p=>{
+   p.x+=p.vx*.016;p.y+=p.vy*.016;p.vy+=65*.016;p.life-=.018;
+   ctx.globalAlpha=Math.max(0,p.life);ctx.font='bold 18px sans-serif';ctx.textAlign='center';
+   ctx.fillStyle='#d779a4';ctx.fillText(p.kind,p.x,p.y);ctx.globalAlpha=1;
+ });
+ particles=particles.filter(p=>p.life>0);
+ if(shake>0){ctx.save();ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);drawPlayer();ctx.restore();shake*=.86}
+ else drawPlayer();
+ // finish-line hint
+ if(score>=12){ctx.fillStyle='rgba(255,255,255,.35)';ctx.font='bold 18px sans-serif';ctx.fillText('FINAL MOMO CHALLENGE →',W-260,70)}
+}
+function loop(now){
+ if(!running)return;
+ const dt=Math.min(.032,(now-last)/1000);last=now;update(dt);draw();requestAnimationFrame(loop);
+}
+img.onload=draw;
+</script>
+</body>
+</html>
